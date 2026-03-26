@@ -1,6 +1,6 @@
 import { Hono, type Context } from "https://deno.land/x/hono@v3.4.1/mod.ts";
 import { HTTPException } from "https://deno.land/x/hono@v3.12.10/http-exception.ts";
-import { dnVerifyTokenDetail } from "./dn_token.ts";
+import { verifyToken } from "./dn_token.ts";
 
 const TOKEN_SECRET = Deno.env.get("KV_TOKEN_SECRET") ?? "42";
 console.debug(
@@ -145,20 +145,10 @@ function checkToken(c: Context): string {
     throw new HTTPException(401, { message: "Missing or invalid token" });
   }
 
-  const detail = dnVerifyTokenDetail(token, TOKEN_SECRET);
-  if (detail.parts) {
-    console.debug("[checkToken] token parts", {
-      signedPayload: detail.parts.signedPayload,
-      sig6FromToken: detail.parts.sig6FromToken,
-      expireYYMM: detail.parts.expireYYMM,
-      expiresExclusiveUtc: detail.parts.expiresExclusiveUtc,
-      basePattern: detail.parts.basePattern,
-      expectedSig6: detail.parts.expectedSig6,
-      md5Full: detail.parts.md5Full,
-    });
-  }
-  if (!detail.ok) {
-    console.debug("[checkToken] rejected:", detail.reason);
+  const v = verifyToken(token, TOKEN_SECRET);
+  if (v.debug) console.debug("[checkToken]", v.debug);
+  if (!v.ok) {
+    console.debug("[checkToken] rejected:", v.reason);
     throw new HTTPException(401, { message: "Missing or invalid token" });
   }
 
