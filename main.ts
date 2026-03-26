@@ -1,84 +1,90 @@
 import { Hono, type Context } from "https://deno.land/x/hono@v3.4.1/mod.ts";
 import { HTTPException } from "https://deno.land/x/hono@v3.12.10/http-exception.ts";
+import { dnVerifyTokenDetail } from "./dn_token.ts";
+
+const TOKEN_SECRET = Deno.env.get("KV_TOKEN_SECRET") ?? "42";
+console.debug(
+  "[kv-admin] token HMAC secret:",
+  Deno.env.has("KV_TOKEN_SECRET") ? "KV_TOKEN_SECRET from env" : "default '42'",
+);
 
 const app = new Hono();
 const kv = await Deno.openKv();
+console.debug("[kv-admin] Deno KV opened");
 
 // Basic KV operations to support admin interface
+// Multi-tenant: query ?token=... is the first KV key segment; the path after /kv/.../ is the rest.
+// Example: /kv/set/pg4e/47?token=2606_dca272:04b82a -> key ["2606_dca272:04b82a", "pg4e", "47"]
 
 // Set a record by key (POST body is JSON)
-// https://pg4e-deno-kv-api-10.deno.dev/kv/set/books/Hamlet?key=123
+// https://pg4e-deno-kv-api-10.deno.dev/kv/set/pg4e/47?token=your_token
 app.post("/kv/set/:key{.*}", async (c) => {
-  checkToken(c);
-  const key = c.req.param("key");
+  const pathKey = c.req.param("key");
+  const kvKey = tenantKvKey(c, pathKey);
   const body = await c.req.json();
-  const result = await kv.set(key.split('/'), body);
+  const result = await kv.set(kvKey, body);
   return c.json(result);
 });
 
 // Get a record by key
-// https://pg4e-deno-kv-api-10.deno.dev/kv/get/books/Hamlet?key=123
+// https://pg4e-deno-kv-api-10.deno.dev/kv/get/pg4e/47?token=your_token
 app.get("/kv/get/:key{.*}", async (c) => {
-  checkToken(c);
-  const key = c.req.param("key");
-  const result = await kv.get(key.split('/'));
+  const pathKey = c.req.param("key");
+  const result = await kv.get(tenantKvKey(c, pathKey));
   return c.json(result);
 });
 
 // List records with a key prefix
-// https://pg4e-deno-kv-api-10.deno.dev/kv/list/books
+// https://pg4e-deno-kv-api-10.deno.dev/kv/list/pg4e?token=your_token
 app.get("/kv/list/:key{.*}", async (c) => {
-  checkToken(c);
-  const key = c.req.param("key");
+  const pathKey = c.req.param("key");
   const cursor = c.req.query("cursor");
   const extra: Deno.KvListOptions = { limit: 100 };
   if (typeof cursor === "string" && cursor.length > 0) {
     extra.cursor = cursor;
   }
-  const iter = await kv.list({ prefix: key.split('/') }, extra );
+  const iter = await kv.list({ prefix: tenantKvKey(c, pathKey) }, extra);
   const records = [];
   for await (const entry of iter) {
     records.push(entry);
   }
-  return c.json({'records': records, 'cursor': iter.cursor});
+  return c.json({ records, cursor: iter.cursor });
 });
 
 // Delete a record
-// https://pg4e-deno-kv-api-10.deno.dev/kv/delete/books/Hamlet?key=123
+// https://pg4e-deno-kv-api-10.deno.dev/kv/delete/pg4e/47?token=your_token
 app.delete("/kv/delete/:key{.*}", async (c) => {
-  checkToken(c);
-  const key = c.req.param("key");
-  const result = await kv.delete(key.split('/'));
+  const pathKey = c.req.param("key");
+  const result = await kv.delete(tenantKvKey(c, pathKey));
   return c.json(result);
 });
 
 // Delete a prefix
-// https://pg4e-deno-kv-api-10.deno.dev/kv/delete/books/nonfiction?key=123
+// https://pg4e-deno-kv-api-10.deno.dev/kv/delete_prefix/pg4e?token=your_token
 app.delete("/kv/delete_prefix/:key{.*}", async (c) => {
-  checkToken(c);
-  const key = c.req.param("key");
-  const iter = await kv.list({ prefix: key.split('/') });
+  const pathKey = c.req.param("key");
+  const iter = await kv.list({ prefix: tenantKvKey(c, pathKey) });
   const keys = [];
   for await (const entry of iter) {
     kv.delete(entry.key);
     keys.push(entry.key);
   }
-  console.log("Keys with prefix", key, "deleted:", keys.length);
-  return c.json({'keys': keys});
+  console.log("Keys with prefix", pathKey, "deleted:", keys.length);
+  return c.json({ keys });
 });
 
-// Full database reset
-// https://pg4e-deno-kv-api-10.deno.dev/kv/full_reset_42?key=123
+// Full reset for this tenant only (all keys under this token)
+// https://pg4e-deno-kv-api-10.deno.dev/kv/full_reset_42?token=your_token
 app.delete("/kv/full_reset_42", async (c) => {
-  checkToken(c);
-  const iter = await kv.list({ prefix: [] });
+  const token = checkToken(c);
+  const iter = await kv.list({ prefix: [token] });
   const keys = [];
   for await (const entry of iter) {
     kv.delete(entry.key);
     keys.push(entry);
   }
-  console.log("Database reset keys deleted:", keys.length);
-  return c.json({'keys': keys});
+  console.log("Tenant reset keys deleted:", keys.length);
+  return c.json({ keys });
 });
 
 // Dump the request object for learning and debugging
@@ -128,12 +134,44 @@ app.onError((err, c) => {
   return c.text('Internal Server Error', 500);
 });
 
-// Insure security - The autograder will have you change this value
-function checkToken(c: Context) {
+/**
+ * Query `?token=...` must be signed: `signedPayload` + `:` + 6 hex chars = md5(signedPayload:secret)[0..6].
+ * Secret is `KV_TOKEN_SECRET` or default `'42'`. Path is not used for auth.
+ */
+function checkToken(c: Context): string {
   const token = c.req.query("token");
-  if ( token == '42' ) return true;
-  throw new HTTPException(401, { message: 'Missing or invalid token' }); 
+  if (typeof token !== "string" || token.length === 0) {
+    console.debug("[checkToken] rejected: missing or empty token query");
+    throw new HTTPException(401, { message: "Missing or invalid token" });
+  }
+
+  const detail = dnVerifyTokenDetail(token, TOKEN_SECRET);
+  if (detail.parts) {
+    console.debug("[checkToken] token parts", {
+      signedPayload: detail.parts.signedPayload,
+      sig6FromToken: detail.parts.sig6FromToken,
+      expireYYMM: detail.parts.expireYYMM,
+      expiresExclusiveUtc: detail.parts.expiresExclusiveUtc,
+      basePattern: detail.parts.basePattern,
+      expectedSig6: detail.parts.expectedSig6,
+      md5Full: detail.parts.md5Full,
+    });
+  }
+  if (!detail.ok) {
+    console.debug("[checkToken] rejected:", detail.reason);
+    throw new HTTPException(401, { message: "Missing or invalid token" });
+  }
+
+  return token;
 }
+
+/** Full KV key: [token, ...path segments from the URL]. */
+function tenantKvKey(c: Context, pathKey: string): Deno.KvKey {
+  const token = checkToken(c);
+  const segments = pathKey.split("/").filter((s) => s.length > 0);
+  return [token, ...segments];
+}
+
 
 // If you are putting up your own server you can either delete this
 // CRON entry or change it to be once per month with "0 0 1 * *" as
