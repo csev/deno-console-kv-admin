@@ -1,3 +1,6 @@
 {
-  "unstable": ["kv", "cron"]
+  "unstable": ["kv", "cron"],
+  "tasks": {
+    "test": "deno test --allow-env ."
+  }
 }

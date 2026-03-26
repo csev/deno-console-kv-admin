@@ -87,6 +87,14 @@ Which means "no records exist with prefix of books".  If your token is wrong you
 
 At this point you have verified that your KVAdmin web service end points are up and running.
 
+# Unit tests
+
+If you clone this repository and have [Deno](https://deno.com/) installed, you can run the automated tests for query-token verification (`dn_token.ts`). From the project root:
+
+    deno task test
+
+That runs `deno test --allow-env .`, which picks up `dn_token_test.ts` and checks valid tokens, expiry, bad signatures, and related failure cases. You need network access the first time so Deno can cache dependencies (for example `jsr:@std/assert`).
+
 # Using kvadmin.py
 
 We have built a simple Python client for this server that allows you to execute simple DENO KV commands
