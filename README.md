@@ -95,6 +95,15 @@ If you clone this repository and have [Deno](https://deno.com/) installed, you c
 
 That runs `deno test --allow-env .`, which picks up `dn_token_test.ts` and checks valid tokens, expiry, bad signatures, and related failure cases. You need network access the first time so Deno can cache dependencies (for example `jsr:@std/assert`).
 
+# Environment variables
+
+Optional settings read at startup (for example in [Deno Deploy](https://dash.deno.com/) under your project’s **Settings → Environment Variables**, or in your shell before `deno run`):
+
+| Variable | Purpose |
+| -------- | ------- |
+| `KV_TOKEN_SECRET` | Shared secret used to verify signed `?token=` values (must match the secret your PHP `dn_maketoken` uses). If unset, the app defaults to `'42'`. |
+| `KV_ADMIN_DEBUG` | Set to `1`, `true`, or `yes` (case-insensitive) to print extra `console.debug` lines for token checks and startup. If unset or any other value, those debug messages are suppressed. |
+
 # Using kvadmin.py
 
 We have built a simple Python client for this server that allows you to execute simple DENO KV commands

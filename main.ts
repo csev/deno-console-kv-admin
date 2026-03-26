@@ -2,15 +2,24 @@ import { Hono, type Context } from "https://deno.land/x/hono@v3.4.1/mod.ts";
 import { HTTPException } from "https://deno.land/x/hono@v3.12.10/http-exception.ts";
 import { verifyToken } from "./dn_token.ts";
 
+/** Enable verbose logs: set `KV_ADMIN_DEBUG` to `1`, `true`, or `yes` (case-insensitive). */
+const KV_ADMIN_DEBUG = /^1|true|yes$/i.test(
+  Deno.env.get("KV_ADMIN_DEBUG")?.trim() ?? "",
+);
+
+function debug(...args: unknown[]) {
+  if (KV_ADMIN_DEBUG) console.debug(...args);
+}
+
 const TOKEN_SECRET = Deno.env.get("KV_TOKEN_SECRET") ?? "42";
-console.debug(
+debug(
   "[kv-admin] token HMAC secret:",
   Deno.env.has("KV_TOKEN_SECRET") ? "KV_TOKEN_SECRET from env" : "default '42'",
 );
 
 const app = new Hono();
 const kv = await Deno.openKv();
-console.debug("[kv-admin] Deno KV opened");
+debug("[kv-admin] Deno KV opened");
 
 // Basic KV operations to support admin interface
 // Multi-tenant: query ?token=... is the first KV key segment; the path after /kv/.../ is the rest.
@@ -141,14 +150,14 @@ app.onError((err, c) => {
 function checkToken(c: Context): string {
   const token = c.req.query("token");
   if (typeof token !== "string" || token.length === 0) {
-    console.debug("[checkToken] rejected: missing or empty token query");
+    debug("[checkToken] rejected: missing or empty token query");
     throw new HTTPException(401, { message: "Missing or invalid token" });
   }
 
   const v = verifyToken(token, TOKEN_SECRET);
-  if (v.debug) console.debug("[checkToken]", v.debug);
+  if (v.debug) debug("[checkToken]", v.debug);
   if (!v.ok) {
-    console.debug("[checkToken] rejected:", v.reason);
+    debug("[checkToken] rejected:", v.reason);
     throw new HTTPException(401, { message: "Missing or invalid token" });
   }
 
