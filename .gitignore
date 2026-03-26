@@ -1,3 +1,4 @@
 *.swp
+deno.lock
 .DS_Store
 

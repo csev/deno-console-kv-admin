@@ -179,3 +179,9 @@ are the `kvadmin.py` commands and a few sample commands:
 If the auto grader tells you to change your `token` value, make sure to change it on your
 Deploy Playground instance and do a `Save and Deploy` and then also change your `hidden.py` so
 that your `kvadmin.py` continues to work.
+
+Running Locally for Testing and Development
+-------------------------------------------
+
+    http://0.0.0.0:8000/
+

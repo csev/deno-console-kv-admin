@@ -1,4 +1,4 @@
-import { Hono } from "https://deno.land/x/hono@v3.4.1/mod.ts";
+import { Hono, type Context } from "https://deno.land/x/hono@v3.4.1/mod.ts";
 import { HTTPException } from "https://deno.land/x/hono@v3.12.10/http-exception.ts";
 
 const app = new Hono();
@@ -31,9 +31,9 @@ app.get("/kv/list/:key{.*}", async (c) => {
   checkToken(c);
   const key = c.req.param("key");
   const cursor = c.req.query("cursor");
-  const extra = {'limit': 100};
-  if ( typeof cursor == 'string' && cursor.length > 0 ) {
-    extra['cursor'] = cursor;
+  const extra: Deno.KvListOptions = { limit: 100 };
+  if (typeof cursor === "string" && cursor.length > 0) {
+    extra.cursor = cursor;
   }
   const iter = await kv.list({ prefix: key.split('/') }, extra );
   const records = [];
@@ -129,7 +129,7 @@ app.onError((err, c) => {
 });
 
 // Insure security - The autograder will have you change this value
-function checkToken(c) {
+function checkToken(c: Context) {
   const token = c.req.query("token");
   if ( token == '42' ) return true;
   throw new HTTPException(401, { message: 'Missing or invalid token' }); 
