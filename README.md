@@ -93,7 +93,7 @@ If you clone this repository and have [Deno](https://deno.com/) installed, you c
 
     deno task test
 
-That runs `deno test --allow-env .`, which picks up `dn_token_test.ts` and checks valid tokens, expiry, bad signatures, and related failure cases. You need network access the first time so Deno can cache dependencies (for example `jsr:@std/assert`).
+That runs `deno test --allow-env .`, which picks up `dn_token_test.ts` and checks valid tokens, expiry, bad signatures, and related failure cases. You need network access the first time so Deno can cache dependencies (for example `jsr:@std/assert`). For starting the HTTP server and manual checks with `curl`, see [Running locally](#running-locally-for-testing-and-development) below.
 
 # Environment variables
 
@@ -197,8 +197,80 @@ If the auto grader tells you to change your `token` value, make sure to change i
 Deploy Playground instance and do a `Save and Deploy` and then also change your `hidden.py` so
 that your `kvadmin.py` continues to work.
 
-Running Locally for Testing and Development
--------------------------------------------
+# Running locally for testing and development
 
-    http://0.0.0.0:8000/
+You can run the same Hono app and Deno KV API on your machine without Deno Deploy. This is useful for development, debugging, and exercising the endpoints before you paste `main.ts` into a Playground.
+
+## Prerequisites
+
+- [Deno](https://deno.com/) 2.x (KV and cron unstable features are enabled via `deno.json`)
+- A clone of this repository
+
+## Start the server
+
+From the project root:
+
+    deno run -A main.ts
+
+The server listens on **http://127.0.0.1:8000/** (shown in the console as `http://0.0.0.0:8000/`). The `-A` flag grants permissions needed for Deno KV and the HTTP listener; `deno.json` already enables the `kv` and `cron` unstable features.
+
+Optional environment variables (same as [Environment variables](#environment-variables) above):
+
+    KV_TOKEN_SECRET=42 KV_ADMIN_DEBUG=1 deno run -A main.ts
+
+`KV_ADMIN_DEBUG=1` prints extra lines when tokens are checked.
+
+### Disable the hourly CRON job locally
+
+`main.ts` includes a `Deno.cron()` handler that deletes **all** KV data every hour. For local work, comment out or remove that block (same advice as for Deno Deploy in [Installation Instructions](#installation-instructions)), or change the schedule to something rare (for example `0 0 1 * *` for monthly). Otherwise your local database will be wiped on the hour.
+
+## Manual HTTP testing
+
+These checks mirror [Initial testing](#initial-testing) on Deno Deploy, but use `127.0.0.1`.
+
+**`/dump` (no token required)**
+
+    curl -s http://127.0.0.1:8000/dump
+
+You should get JSON with `method`, `url`, `path`, `headers`, `query`, and `body`.
+
+**`/kv/list/...` (signed `?token=` required)**
+
+KV routes expect a signed token in the query string (same format as PHP `dn_maketoken`: `YYMM_user` + `:` + first 6 hex chars of `md5(payload:secret)`). With the default secret `42`, a valid example for 2026 is:
+
+    curl -s "http://127.0.0.1:8000/kv/list/books?token=2606_test:39dc06"
+
+An empty prefix returns `{"records":[],"cursor":""}`. A bad or missing token returns HTTP `401` with `Missing or invalid token`.
+
+To build a token for your own payload and secret:
+
+    deno eval "import { createHash } from 'node:crypto'; const p='2606_myuser'; const s='42'; const sig=createHash('md5').update(p+':'+s).digest('hex').slice(0,6); console.log(p+':'+sig);"
+
+Use a `YYMM` prefix that has not expired (valid through 00:00 UTC on the first day of the following month). Set `KV_TOKEN_SECRET` when starting the server if you use a non-default secret.
+
+**Set and list a record**
+
+    curl -s -X POST "http://127.0.0.1:8000/kv/set/books/Hamlet?token=2606_test:39dc06" \
+      -H "Content-Type: application/json" \
+      -d '{"author":"Bill","title":"Hamlet"}'
+
+    curl -s "http://127.0.0.1:8000/kv/list/books?token=2606_test:39dc06"
+
+## Automated unit tests
+
+From the project root:
+
+    deno task test
+
+See [Unit tests](#unit-tests) for what is covered. No server needs to be running for these tests.
+
+## Using kvadmin.py against localhost
+
+In `hidden.py`, point `url` at your local server:
+
+    def denokv():
+        return { 'token' : '2606_test:39dc06',
+             "url": "http://127.0.0.1:8000" }
+
+Use a token signed with the same secret as the running server (`KV_TOKEN_SECRET` or default `42`). Then run `python kvadmin.py` or `python3 kvadmin.py` as described in [Using kvadmin.py](#using-kvadminpy).
 

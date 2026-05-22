@@ -40,7 +40,7 @@ app.post("/kv/set/:key{.*}", async (c) => {
 app.get("/kv/get/:key{.*}", async (c) => {
   const pathKey = c.req.param("key");
   const result = await kv.get(tenantKvKey(c, pathKey));
-  return c.json(result);
+  return c.json(publicEntry(result));
 });
 
 // List records with a key prefix
@@ -55,7 +55,7 @@ app.get("/kv/list/:key{.*}", async (c) => {
   const iter = await kv.list({ prefix: tenantKvKey(c, pathKey) }, extra);
   const records = [];
   for await (const entry of iter) {
-    records.push(entry);
+    records.push(publicEntry(entry));
   }
   return c.json({ records, cursor: iter.cursor });
 });
@@ -76,7 +76,7 @@ app.delete("/kv/delete_prefix/:key{.*}", async (c) => {
   const keys = [];
   for await (const entry of iter) {
     kv.delete(entry.key);
-    keys.push(entry.key);
+    keys.push(publicKey(entry.key));
   }
   console.log("Keys with prefix", pathKey, "deleted:", keys.length);
   return c.json({ keys });
@@ -90,7 +90,7 @@ app.delete("/kv/full_reset_42", async (c) => {
   const keys = [];
   for await (const entry of iter) {
     kv.delete(entry.key);
-    keys.push(entry);
+    keys.push(publicEntry(entry));
   }
   console.log("Tenant reset keys deleted:", keys.length);
   return c.json({ keys });
@@ -169,6 +169,23 @@ function tenantKvKey(c: Context, pathKey: string): Deno.KvKey {
   const token = checkToken(c);
   const segments = pathKey.split("/").filter((s) => s.length > 0);
   return [token, ...segments];
+}
+
+/** JSON responses omit the tenant token (first key segment). */
+function publicKey(kvKey: Deno.KvKey): Deno.KvKey {
+  return kvKey.length > 1 ? kvKey.slice(1) : [];
+}
+
+function publicEntry<T>(entry: Deno.KvEntry<T>): {
+  key: Deno.KvKey;
+  value: T;
+  versionstamp: string;
+} {
+  return {
+    key: publicKey(entry.key),
+    value: entry.value,
+    versionstamp: entry.versionstamp,
+  };
 }
 
 
