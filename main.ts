@@ -214,9 +214,8 @@ function publicEntry<T>(entry: Deno.KvEntry<T>): {
 
 
 // If you are putting up your own server you can either delete this
-// CRON entry or change it to be once per month with "0 0 1 * *" as
-// the CRON string
-Deno.cron("Hourly DB Reset", "0 * * * *", async () => {
+// CRON entry or change the schedule (for example "0 0 1 * *" for monthly).
+Deno.cron("Daily DB Reset", "0 0 * * *", async () => {
   const ckv = await Deno.openKv();
   const iter = await ckv.list({ prefix: [] });
   const keys = [];
@@ -226,7 +225,7 @@ Deno.cron("Hourly DB Reset", "0 * * * *", async () => {
     count++;
     if ( count < 10 ) keys.push(entry.key);
   }
-  console.log("Hourly reset keys deleted:", count, keys);
+  console.log("Daily reset keys deleted:", count, keys);
 });
 
 Deno.serve(app.fetch);

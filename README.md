@@ -20,7 +20,7 @@ https://github.com/csev/deno-kv-admin/blob/main/main.ts
 
 Paste it into the code panel of your Deno playground.  Before you `Save and Deploy`,
 scroll to the bottom and delete the `Deno.cron()` method so your data does not get wiped out
-every hour.  Or you could change the CRON string to something like ""0 0 1 * *" to clear your
+every day.  Or you could change the CRON string to something like `"0 0 1 * *"` to clear your
 data once per month.
 
 Also note the `checkToken()` code near the end.  The autograder will ask you to change the token
@@ -220,9 +220,9 @@ Optional environment variables (same as [Environment variables](#environment-var
 
 `KV_ADMIN_DEBUG=1` prints extra lines when tokens are checked.
 
-### Disable the hourly CRON job locally
+### Disable the daily CRON job locally
 
-`main.ts` includes a `Deno.cron()` handler that deletes **all** KV data every hour. For local work, comment out or remove that block (same advice as for Deno Deploy in [Installation Instructions](#installation-instructions)), or change the schedule to something rare (for example `0 0 1 * *` for monthly). Otherwise your local database will be wiped on the hour.
+`main.ts` includes a `Deno.cron()` handler that deletes **all** KV data once per day (midnight UTC, `0 0 * * *`). For local work, comment out or remove that block (same advice as for Deno Deploy in [Installation Instructions](#installation-instructions)), or change the schedule to something rare (for example `0 0 1 * *` for monthly). Otherwise your local database will be wiped daily.
 
 ## Manual HTTP testing
 
